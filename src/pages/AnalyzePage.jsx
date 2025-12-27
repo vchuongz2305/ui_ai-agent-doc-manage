@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AnalyzedFilesList from '../components/AnalyzedFilesList';
 import FileDetailModal from '../components/FileDetailModal';
+import { getApiUrl } from '../config';
 import '../App.css';
 
 function AnalyzePage() {
@@ -54,7 +55,7 @@ function AnalyzePage() {
       formData.append('userId', 'analyze-user');
       formData.append('mode', 'analyze'); // Chỉ phân tích
 
-      const response = await fetch('/api/document/process', {
+      const response = await fetch(getApiUrl('/api/document/process'), {
         method: 'POST',
         body: formData
       });
@@ -97,7 +98,7 @@ function AnalyzePage() {
       pollCount++;
       
       try {
-        const response = await fetch(`/api/document/status/${id}`);
+        const response = await fetch(getApiUrl(`/api/document/status/${id}`));
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);

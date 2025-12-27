@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import FileSelector from '../components/FileSelector';
+import { getApiUrl } from '../config';
 import '../App.css';
 
 function GDPRPage() {
@@ -69,7 +70,7 @@ function GDPRPage() {
       }
       console.log('📡 API URL:', apiUrl);
       
-      const response = await fetch(apiUrl, {
+      const response = await fetch(getApiUrl(apiUrl), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -170,7 +171,7 @@ function GDPRPage() {
   const loadGDPRResult = async (processingId) => {
     try {
       setLoading(true);
-      const response = await fetch(`/gdpr/${processingId}`);
+      const response = await fetch(getApiUrl(`/gdpr/${processingId}`));
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -237,7 +238,7 @@ function GDPRPage() {
       formData.append('userId', 'gdpr-user');
       formData.append('mode', 'analyze'); // Chỉ phân tích, sau đó sẽ trigger GDPR
 
-      const response = await fetch('/api/document/process', {
+      const response = await fetch(getApiUrl('/api/document/process'), {
         method: 'POST',
         body: formData
       });
@@ -274,7 +275,7 @@ function GDPRPage() {
       try {
         pollCount++;
         
-        const response = await fetch(`/api/document/status/${id}`);
+        const response = await fetch(getApiUrl(`/api/document/status/${id}`));
         
         if (!response.ok) {
           if (pollCount >= maxPolls) {
@@ -336,7 +337,7 @@ function GDPRPage() {
     }));
     
     try {
-      const response = await fetch('/api/document/trigger-gdpr', {
+      const response = await fetch(getApiUrl('/api/document/trigger-gdpr'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -391,7 +392,7 @@ function GDPRPage() {
         pollCount++;
         
         // Thử lấy từ PostgreSQL endpoint /gdpr/:processingId (có đầy đủ GDPR data)
-        const gdprResponse = await fetch(`/gdpr/${id}`);
+        const gdprResponse = await fetch(getApiUrl(`/gdpr/${id}`));
         if (gdprResponse.ok) {
           const gdprData = await gdprResponse.json();
           if (gdprData.success && gdprData.data?.gdpr_result) {
@@ -431,7 +432,7 @@ function GDPRPage() {
         }
         
         // Nếu không có trong PostgreSQL, thử lấy từ status API (fallback)
-        const response = await fetch(`/api/document/status/${id}`);
+        const response = await fetch(getApiUrl(`/api/document/status/${id}`));
         
         if (!response.ok) {
           if (pollCount >= maxPolls) {

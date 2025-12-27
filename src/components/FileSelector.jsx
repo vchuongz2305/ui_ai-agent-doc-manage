@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getApiUrl } from '../config';
 import '../App.css';
 
 function FileSelector({ onFileSelect, selectedFileId, filter }) {
@@ -33,7 +34,7 @@ function FileSelector({ onFileSelect, selectedFileId, filter }) {
           apiUrl += `&search=${encodeURIComponent(searchQuery.trim())}`;
         }
         
-        const response = await fetch(apiUrl);
+        const response = await fetch(getApiUrl(apiUrl));
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -93,7 +94,7 @@ function FileSelector({ onFileSelect, selectedFileId, filter }) {
         apiUrl += `&search=${encodeURIComponent(searchQuery.trim())}`;
       }
       
-      const response = await fetch(apiUrl);
+      const response = await fetch(getApiUrl(apiUrl));
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

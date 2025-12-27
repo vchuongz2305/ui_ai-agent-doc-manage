@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { getApiUrl } from '../config';
 import '../App.css';
 
 const AnalyzedFilesList = forwardRef(({ onFileSelect }, ref) => {
@@ -9,7 +10,7 @@ const AnalyzedFilesList = forwardRef(({ onFileSelect }, ref) => {
   const loadAnalyzedFiles = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/document/status');
+      const response = await fetch(getApiUrl('/api/document/status'));
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

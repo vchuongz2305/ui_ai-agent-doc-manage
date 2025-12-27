@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { getApiUrl } from '../config';
 import '../App.css';
 
 function HomePage() {
@@ -29,7 +30,7 @@ function HomePage() {
       setLoading(true);
       
       // Fetch all documents from database via /gdpr endpoint
-      const response = await fetch('/gdpr?limit=1000&has_analysis=true');
+      const response = await fetch(getApiUrl('/gdpr?limit=1000&has_analysis=true'));
       const data = await response.json();
       const allDocs = data.success ? (data.data || []) : [];
 

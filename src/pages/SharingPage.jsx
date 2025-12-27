@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import FileSelector from '../components/FileSelector';
+import { getApiUrl } from '../config';
 import '../App.css';
 
 function SharingPage() {
@@ -127,7 +128,7 @@ function SharingPage() {
   // Fetch approvals list
   const fetchApprovals = async () => {
     try {
-      const response = await fetch(`/api/approvals/list?status=${approvalsFilter}`);
+      const response = await fetch(getApiUrl(`/api/approvals/list?status=${approvalsFilter}`));
       if (!response.ok) throw new Error('Failed to fetch approvals');
       
       const data = await response.json();
@@ -149,7 +150,7 @@ function SharingPage() {
     if (!confirm(`Xác nhận PHÊ DUYỆT:\n"${approval.documentTitle}"?`)) return;
 
     try {
-      const response = await fetch('/api/approvals/process', {
+      const response = await fetch(getApiUrl('/api/approvals/process'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -174,7 +175,7 @@ function SharingPage() {
     if (!reason?.trim()) return alert('Vui lòng nhập lý do');
 
     try {
-      const response = await fetch('/api/approvals/process', {
+      const response = await fetch(getApiUrl('/api/approvals/process'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -251,7 +252,7 @@ function SharingPage() {
     
     try {
       // Gọi API để trigger sharing workflow với processingId đã có
-      const response = await fetch('/api/document/trigger-sharing', {
+      const response = await fetch(getApiUrl('/api/document/trigger-sharing'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -310,7 +311,7 @@ function SharingPage() {
   const startStatusPolling = (id) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/document/status/${id}`);
+        const response = await fetch(getApiUrl(`/api/document/status/${id}`));
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
