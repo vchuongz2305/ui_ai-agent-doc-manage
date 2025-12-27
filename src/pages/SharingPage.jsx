@@ -7,6 +7,7 @@ function SharingPage() {
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [sharingEmails, setSharingEmails] = useState('');
+  const [recipientInput, setRecipientInput] = useState(''); // Input cho tên và email tự do
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [processingId, setProcessingId] = useState(null);
@@ -67,6 +68,54 @@ function SharingPage() {
   // Clear all selected users
   const clearAllUsers = () => {
     setSelectedUsers([]);
+  };
+
+  // Parse recipient input (có thể là "Tên - Email" hoặc "Email" hoặc "Tên <Email>")
+  const parseRecipientInput = (input) => {
+    if (!input || !input.trim()) return [];
+    
+    const lines = input.split(/[\n,;]/).map(line => line.trim()).filter(line => line);
+    const recipients = [];
+    
+    lines.forEach(line => {
+      // Pattern 1: "Tên - Email" hoặc "Tên -Email"
+      const dashPattern = /^(.+?)\s*-\s*(.+)$/;
+      const dashMatch = line.match(dashPattern);
+      if (dashMatch) {
+        const name = dashMatch[1].trim();
+        const email = dashMatch[2].trim();
+        if (email.includes('@')) {
+          recipients.push({ name, email, source: 'manual' });
+          return;
+        }
+      }
+      
+      // Pattern 2: "Tên <email@example.com>" hoặc "email@example.com (Tên)"
+      const bracketPattern = /^(.+?)\s*[<\(](.+?)[>\)]$/;
+      const bracketMatch = line.match(bracketPattern);
+      if (bracketMatch) {
+        const part1 = bracketMatch[1].trim();
+        const part2 = bracketMatch[2].trim();
+        if (part2.includes('@')) {
+          recipients.push({ name: part1, email: part2, source: 'manual' });
+          return;
+        } else if (part1.includes('@')) {
+          recipients.push({ name: part2, email: part1, source: 'manual' });
+          return;
+        }
+      }
+      
+      // Pattern 3: Chỉ có email
+      if (line.includes('@')) {
+        recipients.push({ name: '', email: line, source: 'manual' });
+        return;
+      }
+      
+      // Pattern 4: Chỉ có tên (không có email) - bỏ qua
+      console.warn('⚠️ Không thể parse:', line);
+    });
+    
+    return recipients;
   };
 
   // Update sharing emails when selected users change
@@ -161,8 +210,38 @@ function SharingPage() {
       return;
     }
 
-    if (selectedUsers.length === 0) {
-      alert('Vui lòng chọn ít nhất một người dùng để chia sẻ');
+    // Parse recipients từ input tự do
+    const manualRecipients = parseRecipientInput(recipientInput);
+    
+    // Lấy recipients từ selectedUsers (từ danh sách bộ phận)
+    const departmentRecipients = selectedUsers.map(user => ({
+      name: user.name,
+      email: user.email,
+      source: 'department'
+    }));
+    
+    // Gộp tất cả recipients (ưu tiên manual nếu trùng email)
+    const allRecipients = [...departmentRecipients];
+    manualRecipients.forEach(manual => {
+      const existingIndex = allRecipients.findIndex(r => r.email === manual.email);
+      if (existingIndex >= 0) {
+        // Update name nếu manual có tên
+        if (manual.name) {
+          allRecipients[existingIndex].name = manual.name;
+        }
+        allRecipients[existingIndex].source = 'manual';
+      } else {
+        allRecipients.push(manual);
+      }
+    });
+    
+    // Validate emails
+    const validRecipients = allRecipients.filter(r => r.email && r.email.includes('@'));
+    const allEmails = validRecipients.map(r => r.email);
+    const allNames = validRecipients.map(r => r.name || '');
+    
+    if (allEmails.length === 0) {
+      alert('Vui lòng nhập ít nhất một email người nhận (có thể kèm tên) hoặc chọn người dùng từ danh sách bộ phận');
       return;
     }
 
@@ -180,9 +259,21 @@ function SharingPage() {
         body: JSON.stringify({
           processingId: selectedFile.processing_id,
           department: selectedDepartment,
-          sharingEmails: sharingEmails,
+          recipient_emails: allEmails,
+          recipient_names: allNames,
+          recipientEmails: allEmails,
+          recipientNames: allNames,
+          recipients: validRecipients, // Gửi cả danh sách đầy đủ với tên và email
+          sharingEmails: allEmails.join(','),
           selectedUsers: selectedUsers,
-          userId: selectedUsers.length > 0 ? selectedUsers[0].id : 'default-user'
+          userId: selectedUsers.length > 0 ? selectedUsers[0].id : 'default-user',
+          // Gửi thêm GDPR data từ file đã chọn
+          gdpr_decision: selectedFile.gdpr_result?.gdpr_decision,
+          legal_basis: selectedFile.gdpr_result?.legal_basis,
+          retention_days: selectedFile.gdpr_result?.retention_days,
+          file_name: selectedFile.file_name,
+          file_url: selectedFile.file_url || selectedFile.cloudinary_url,
+          cloudinary_url: selectedFile.cloudinary_url
         })
       });
 
@@ -324,19 +415,21 @@ function SharingPage() {
             </div>
 
           <div className="form-group-modern">
-            <label className="form-label">🏢 Chọn bộ phận:</label>
+            <label className="form-label">🏢 Chọn bộ phận (tùy chọn):</label>
             <select 
               id="selectedDepartment" 
               value={selectedDepartment}
               onChange={handleDepartmentChange}
-              required
               className="form-select"
             >
-              <option value="">-- Chọn bộ phận --</option>
+              <option value="">-- Chọn bộ phận (không bắt buộc) --</option>
               <option value="IT">IT</option>
               <option value="HR">HR</option>
               <option value="Finance">Finance</option>
             </select>
+            <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginTop: '4px' }}>
+              💡 Bạn có thể bỏ qua bước này và nhập tên + email trực tiếp ở bên dưới
+            </div>
           </div>
 
           {selectedDepartment && (
@@ -432,15 +525,65 @@ function SharingPage() {
           )}
 
           <div className="form-group-modern">
-            <label className="form-label" htmlFor="sharingEmails">📧 Sharing Emails:</label>
+            <label className="form-label" htmlFor="recipientInput">
+              👤 Nhập tên và email người nhận (mỗi người một dòng):
+            </label>
             <textarea 
-              id="sharingEmails" 
-              value={sharingEmails}
-              disabled
+              id="recipientInput" 
+              value={recipientInput}
+              onChange={(e) => setRecipientInput(e.target.value)}
               className="form-textarea"
-              rows="3"
-              style={{ background: 'var(--gray-100)', color: 'var(--gray-500)' }}
+              rows="6"
+              placeholder="Nhập tên và email, ví dụ:&#10;Nguyễn Văn A - nguyenvana@example.com&#10;Trần Thị B - tranb@example.com&#10;hoặc chỉ email:&#10;user@example.com&#10;hoặc: Tên &lt;email@example.com&gt;&#10;&#10;Bạn có thể nhập trực tiếp hoặc chọn từ danh sách bộ phận ở trên"
             />
+            <div style={{ fontSize: '0.85rem', color: 'var(--gray-500)', marginTop: '8px' }}>
+              💡 <strong>Định dạng hỗ trợ:</strong><br/>
+              • <code>Tên - Email</code> (ví dụ: Nguyễn Văn A - nguyenvana@example.com)<br/>
+              • <code>Email</code> (chỉ email, ví dụ: user@example.com)<br/>
+              • <code>Tên &lt;Email&gt;</code> hoặc <code>Email (Tên)</code><br/>
+              • Phân cách nhiều người bằng dấu phẩy, chấm phẩy hoặc xuống dòng
+            </div>
+            
+            {/* Preview recipients */}
+            {recipientInput && (
+              <div style={{ 
+                marginTop: '12px', 
+                padding: '12px', 
+                background: 'var(--gray-50)', 
+                borderRadius: '8px',
+                border: '1px solid var(--gray-200)'
+              }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', color: 'var(--gray-700)' }}>
+                  📋 Xem trước người nhận ({parseRecipientInput(recipientInput).length} người):
+                </div>
+                {parseRecipientInput(recipientInput).length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {parseRecipientInput(recipientInput).map((recipient, index) => (
+                      <div key={index} style={{ 
+                        fontSize: '0.85rem', 
+                        padding: '6px 8px', 
+                        background: 'var(--white)',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <span style={{ color: 'var(--success)' }}>✓</span>
+                        <span style={{ fontWeight: recipient.name ? 500 : 400 }}>
+                          {recipient.name || '(Chưa có tên)'}
+                        </span>
+                        <span style={{ color: 'var(--gray-500)' }}>•</span>
+                        <span style={{ color: 'var(--gray-600)' }}>{recipient.email}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.85rem', color: 'var(--warning)', fontStyle: 'italic' }}>
+                    ⚠️ Chưa parse được người nhận nào. Vui lòng kiểm tra định dạng.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
             <button type="submit" className="btn-modern btn-primary" disabled={loading || !selectedFile} style={{ width: '100%' }}>

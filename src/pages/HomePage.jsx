@@ -28,35 +28,28 @@ function HomePage() {
     try {
       setLoading(true);
       
-      // Fetch all document statuses
-      const statusResponse = await fetch('/api/document/status');
-      const allStatuses = await statusResponse.json();
-      
-      // Fetch completed documents from PostgreSQL
-      const completedResponse = await fetch('/api/document/get-all-completed?limit=1000');
-      const completedData = await completedResponse.json();
-      const completedDocs = completedData.success ? completedData.data : [];
+      // Fetch all documents from database via /gdpr endpoint
+      const response = await fetch('/gdpr?limit=1000&has_analysis=true');
+      const data = await response.json();
+      const allDocs = data.success ? (data.data || []) : [];
 
-      // Calculate statistics
-      const total = allStatuses.length;
-      const completed = allStatuses.filter(s => s.status === 'completed').length;
-      const processing = allStatuses.filter(s => s.status === 'processing').length;
-      const failed = allStatuses.filter(s => s.status === 'failed').length;
-      
-      // Calculate total size
-      const totalSize = allStatuses.reduce((sum, s) => sum + (s.fileSize || 0), 0);
+      // Calculate statistics from database
+      const total = allDocs.length;
+      const completed = allDocs.filter(doc => doc.status === 'completed').length;
+      const processing = allDocs.filter(doc => doc.status === 'processing').length;
+      const failed = allDocs.filter(doc => doc.status === 'failed').length;
       
       // Documents by status
       const statusCounts = {
         completed: completed,
         processing: processing,
         failed: failed,
-        pending: allStatuses.filter(s => s.status === 'pending').length
+        pending: allDocs.filter(doc => doc.status === 'pending').length
       };
       
       // Documents by department
       const deptCounts = {};
-      completedDocs.forEach(doc => {
+      allDocs.forEach(doc => {
         const dept = doc.department || 'Unknown';
         deptCounts[dept] = (deptCounts[dept] || 0) + 1;
       });
@@ -67,7 +60,7 @@ function HomePage() {
         const date = new Date();
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
-        const count = completedDocs.filter(doc => {
+        const count = allDocs.filter(doc => {
           const docDate = doc.created_at ? new Date(doc.created_at).toISOString().split('T')[0] : null;
           return docDate === dateStr;
         }).length;
@@ -77,19 +70,23 @@ function HomePage() {
         });
       }
       
-      // GDPR decisions
+      // GDPR decisions from gdpr_result
       const gdprCounts = { approve: 0, review: 0, reject: 0 };
-      completedDocs.forEach(doc => {
-        if (doc.analysis_results?.gdpr?.gdprDecision) {
-          const decision = doc.analysis_results.gdpr.gdprDecision.toLowerCase();
-          if (decision === 'approve' || decision === 'approved') gdprCounts.approve++;
-          else if (decision === 'review') gdprCounts.review++;
-          else if (decision === 'reject' || decision === 'delete') gdprCounts.reject++;
+      allDocs.forEach(doc => {
+        if (doc.gdpr_result?.gdpr_decision) {
+          const decision = doc.gdpr_result.gdpr_decision.toLowerCase();
+          if (decision === 'approve' || decision === 'approved' || decision === 'allow') {
+            gdprCounts.approve++;
+          } else if (decision === 'review' || decision === 'anonymize') {
+            gdprCounts.review++;
+          } else if (decision === 'reject' || decision === 'delete') {
+            gdprCounts.reject++;
+          }
         }
       });
 
       // Recent documents (last 10)
-      const recentDocs = completedDocs
+      const recentDocs = allDocs
         .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
         .slice(0, 10);
 
@@ -98,7 +95,7 @@ function HomePage() {
         completedDocuments: completed,
         processingDocuments: processing,
         failedDocuments: failed,
-        totalSize: totalSize,
+        totalSize: 0, // Size not available from /gdpr endpoint
         documentsByStatus: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
         documentsByDepartment: Object.entries(deptCounts).map(([name, value]) => ({ name, value })),
         documentsByDay: last7Days,
