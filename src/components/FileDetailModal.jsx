@@ -24,7 +24,8 @@ function FileDetailModal({ file, onClose }) {
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
-  const analysis = file.results?.analysis || {};
+  // Lấy analysis_results từ PostgreSQL format hoặc từ results.analysis
+  const analysis = file.results?.analysis || file.analysis_results || {};
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -61,8 +62,26 @@ function FileDetailModal({ file, onClose }) {
               </div>
               <div className="detail-item">
                 <strong>Processing ID:</strong>
-                <span className="processing-id">{file.id}</span>
+                <span className="processing-id">{file.id || file.processing_id}</span>
               </div>
+              {file.processing_id && (
+                <div className="detail-item">
+                  <strong>Processing ID (Full):</strong>
+                  <span className="processing-id">{file.processing_id}</span>
+                </div>
+              )}
+              {file.department && (
+                <div className="detail-item">
+                  <strong>Department:</strong>
+                  <span>{file.department}</span>
+                </div>
+              )}
+              {file.user_id && (
+                <div className="detail-item">
+                  <strong>User ID:</strong>
+                  <span>{file.user_id}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -208,6 +227,83 @@ function FileDetailModal({ file, onClose }) {
                 </div>
               )}
 
+              {/* Hiển thị các trường phân tích khác từ PostgreSQL */}
+              {analysis.gaps_and_limitations && (
+                <div className="detail-item-full">
+                  <strong>Khoảng trống và hạn chế:</strong>
+                  <div className="detail-content">
+                    {Array.isArray(analysis.gaps_and_limitations) ? (
+                      <ul className="key-points-list">
+                        {analysis.gaps_and_limitations.map((item, index) => (
+                          <li key={index}>
+                            {typeof item === 'string' ? item : JSON.stringify(item)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="detail-content detailed-content">
+                        {typeof analysis.gaps_and_limitations === 'string' 
+                          ? analysis.gaps_and_limitations.split('\n').map((line, index) => (
+                              <p key={index}>{line || '\u00A0'}</p>
+                            ))
+                          : JSON.stringify(analysis.gaps_and_limitations, null, 2)
+                        }
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {analysis.follow_up_questions && (
+                <div className="detail-item-full">
+                  <strong>Câu hỏi tiếp theo:</strong>
+                  <div className="detail-content">
+                    {Array.isArray(analysis.follow_up_questions) ? (
+                      <ul className="key-points-list">
+                        {analysis.follow_up_questions.map((item, index) => (
+                          <li key={index}>
+                            {typeof item === 'string' ? item : JSON.stringify(item)}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="detail-content detailed-content">
+                        {typeof analysis.follow_up_questions === 'string' 
+                          ? analysis.follow_up_questions.split('\n').map((line, index) => (
+                              <p key={index}>{line || '\u00A0'}</p>
+                            ))
+                          : JSON.stringify(analysis.follow_up_questions, null, 2)
+                        }
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {analysis.terminology_to_clarify && (
+                <div className="detail-item-full">
+                  <strong>Thuật ngữ cần làm rõ:</strong>
+                  <div className="detail-content">
+                    {Array.isArray(analysis.terminology_to_clarify) ? (
+                      <div className="keywords-list">
+                        {analysis.terminology_to_clarify.map((term, index) => (
+                          <span key={index} className="keyword-tag">
+                            {typeof term === 'string' ? term : JSON.stringify(term)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="detail-content detailed-content">
+                        {typeof analysis.terminology_to_clarify === 'string' 
+                          ? analysis.terminology_to_clarify
+                          : JSON.stringify(analysis.terminology_to_clarify, null, 2)
+                        }
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Hiển thị toàn bộ analysis object nếu có dữ liệu khác */}
               {Object.keys(analysis).length > 0 && (
                 <div className="detail-item-full">
@@ -220,7 +316,8 @@ function FileDetailModal({ file, onClose }) {
                       color: '#f7fafc', 
                       borderRadius: '4px',
                       overflow: 'auto',
-                      fontSize: '0.85rem'
+                      fontSize: '0.85rem',
+                      maxHeight: '400px'
                     }}>
                       {JSON.stringify(analysis, null, 2)}
                     </pre>

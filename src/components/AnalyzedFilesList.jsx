@@ -6,36 +6,81 @@ const AnalyzedFilesList = forwardRef(({ onFileSelect }, ref) => {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const itemsPerPage = 12; // 3 items per row × 4 rows = 12 items per page
 
-  const loadAnalyzedFiles = async () => {
+  const loadAnalyzedFiles = async (page = 1) => {
     try {
       setLoading(true);
+<<<<<<< HEAD
       const response = await fetch(getApiUrl('/api/document/status'));
+=======
+      const offset = (page - 1) * itemsPerPage;
+      // Fetch từ PostgreSQL endpoint với pagination
+      const response = await fetch(`/gdpr?has_analysis=true&limit=${itemsPerPage}&offset=${offset}`);
+>>>>>>> origin/temp
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      const allStatus = await response.json();
+      const result = await response.json();
       
-      // Lọc chỉ những file đã có kết quả phân tích
-      const analyzedFiles = allStatus.filter(status => 
-        status.results?.analysis && 
-        status.status === 'completed'
-      );
+      if (!result.success) {
+        // Nếu database unavailable, trả về empty array
+        if (result.error === 'Database temporarily unavailable') {
+          setFiles([]);
+          setError('Database tạm thời không khả dụng. Vui lòng thử lại sau.');
+          setTotalPages(1);
+          setTotalItems(0);
+          return;
+        }
+        throw new Error(result.message || 'Failed to fetch files');
+      }
       
-      // Sắp xếp theo thời gian tạo (mới nhất trước)
-      analyzedFiles.sort((a, b) => {
-        const dateA = new Date(a.createdAt || 0);
-        const dateB = new Date(b.createdAt || 0);
-        return dateB - dateA;
-      });
+      // Map dữ liệu từ PostgreSQL format sang format component đang dùng
+      const analyzedFiles = (result.data || []).map(item => ({
+        id: item.processing_id,
+        processing_id: item.processing_id,
+        fileName: item.file_name,
+        fileSize: null, // Không có trong PostgreSQL response
+        mimeType: null, // Không có trong PostgreSQL response
+        createdAt: item.created_at || item.document_created_at,
+        updatedAt: item.updated_at || item.document_updated_at,
+        docx_url: item.docx_url,
+        file_url: item.file_url,
+        cloudinary_url: item.cloudinary_url,
+        user_id: item.user_id,
+        department: item.department,
+        status: item.status || item.document_status,
+        // Map analysis_results từ PostgreSQL
+        results: {
+          analysis: item.analysis_results || null
+        },
+        // Thêm thông tin GDPR nếu có
+        gdpr_result: item.gdpr_result,
+        has_gdpr_result: item.has_gdpr_result
+      }));
       
       setFiles(analyzedFiles);
+      
+      // Cập nhật pagination info
+      if (result.pagination) {
+        const total = result.pagination.total || 0;
+        setTotalItems(total);
+        setTotalPages(Math.ceil(total / itemsPerPage));
+      } else {
+        // Fallback nếu không có pagination info
+        setTotalItems(analyzedFiles.length);
+        setTotalPages(1);
+      }
+      
       setError(null);
     } catch (err) {
       console.error('❌ Error loading analyzed files:', err);
-      setError('Không thể tải danh sách file đã phân tích');
+      setError('Không thể tải danh sách file đã phân tích: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -43,12 +88,19 @@ const AnalyzedFilesList = forwardRef(({ onFileSelect }, ref) => {
 
   // Expose loadAnalyzedFiles method to parent via ref
   useImperativeHandle(ref, () => ({
-    refresh: loadAnalyzedFiles
+    refresh: () => loadAnalyzedFiles(currentPage)
   }));
 
   useEffect(() => {
-    loadAnalyzedFiles();
-  }, []);
+    loadAnalyzedFiles(currentPage);
+  }, [currentPage]);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -75,9 +127,16 @@ const AnalyzedFilesList = forwardRef(({ onFileSelect }, ref) => {
       <div className="card-header">
         <div>
           <div className="card-title">Tài Liệu Đã Phân Tích</div>
-          <div className="card-subtitle">Danh sách các file đã được phân tích</div>
+          <div className="card-subtitle">
+            Danh sách các file đã được phân tích
+            {totalItems > 0 && (
+              <span style={{ marginLeft: '8px', color: 'var(--gray-500)', fontSize: '0.9rem' }}>
+                ({totalItems} file)
+              </span>
+            )}
+          </div>
         </div>
-        <button onClick={loadAnalyzedFiles} className="btn-modern btn-secondary" title="Làm mới danh sách">
+        <button onClick={() => loadAnalyzedFiles(currentPage)} className="btn-modern btn-secondary" title="Làm mới danh sách">
           🔄
         </button>
       </div>
@@ -146,19 +205,163 @@ const AnalyzedFilesList = forwardRef(({ onFileSelect }, ref) => {
               
               {file.results?.analysis && (
                 <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--gray-200)' }}>
-                  {file.results.analysis.summary && (
+                  {/* Hiển thị main_theme nếu có */}
+                  {file.results.analysis.main_theme && (
                     <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)', marginBottom: '8px' }}>
-                      <strong>Tóm tắt:</strong> {file.results.analysis.summary.substring(0, 150)}
-                      {file.results.analysis.summary.length > 150 ? '...' : ''}
+                      <strong>Chủ đề:</strong> {
+                        typeof file.results.analysis.main_theme === 'string' 
+                          ? file.results.analysis.main_theme 
+                          : file.results.analysis.main_theme?.output?.main_theme || 'N/A'
+                      }
                     </p>
                   )}
-                  {file.results.analysis.category && (
-                    <span className="filter-tag">{file.results.analysis.category}</span>
+                  {/* Hiển thị summary nếu có */}
+                  {file.results.analysis.summary && (
+                    <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)', marginBottom: '8px' }}>
+                      <strong>Tóm tắt:</strong> {
+                        typeof file.results.analysis.summary === 'string'
+                          ? file.results.analysis.summary.substring(0, 150) + (file.results.analysis.summary.length > 150 ? '...' : '')
+                          : 'Có dữ liệu phân tích'
+                      }
+                    </p>
+                  )}
+                  {/* Hiển thị document_summary nếu có */}
+                  {!file.results.analysis.summary && file.results.analysis.document_summary && (
+                    <p style={{ fontSize: '0.9rem', color: 'var(--gray-600)', marginBottom: '8px' }}>
+                      <strong>Tóm tắt:</strong> {
+                        Array.isArray(file.results.analysis.document_summary)
+                          ? file.results.analysis.document_summary[0]?.content?.substring(0, 150) || 'Có dữ liệu phân tích'
+                          : typeof file.results.analysis.document_summary === 'string'
+                            ? file.results.analysis.document_summary.substring(0, 150) + (file.results.analysis.document_summary.length > 150 ? '...' : '')
+                            : 'Có dữ liệu phân tích'
+                      }
+                    </p>
+                  )}
+                  {/* Hiển thị category hoặc department */}
+                  {(file.results.analysis.category || file.department) && (
+                    <span className="filter-tag">{file.results.analysis.category || file.department}</span>
                   )}
                 </div>
               )}
             </div>
           ))}
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="pagination-modern">
+              {/* First Page Button */}
+              <button
+                className="pagination-btn pagination-btn-nav"
+                onClick={() => handlePageChange(1)}
+                disabled={currentPage === 1}
+                title="Trang đầu"
+              >
+                ⏮
+              </button>
+              
+              {/* Previous Button */}
+              <button
+                className="pagination-btn pagination-btn-nav"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                title="Trang trước"
+              >
+                ←
+              </button>
+              
+              {/* Page Numbers */}
+              <div className="pagination-numbers">
+                {(() => {
+                  const pages = [];
+                  const maxVisible = 5;
+                  let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+                  let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+                  
+                  if (endPage - startPage < maxVisible - 1) {
+                    startPage = Math.max(1, endPage - maxVisible + 1);
+                  }
+                  
+                  // First page
+                  if (startPage > 1) {
+                    pages.push(
+                      <button
+                        key={1}
+                        className="pagination-btn pagination-btn-number"
+                        onClick={() => handlePageChange(1)}
+                      >
+                        1
+                      </button>
+                    );
+                    if (startPage > 2) {
+                      pages.push(
+                        <span key="ellipsis1" className="pagination-ellipsis">...</span>
+                      );
+                    }
+                  }
+                  
+                  // Page numbers
+                  for (let i = startPage; i <= endPage; i++) {
+                    pages.push(
+                      <button
+                        key={i}
+                        className={`pagination-btn pagination-btn-number ${currentPage === i ? 'active' : ''}`}
+                        onClick={() => handlePageChange(i)}
+                      >
+                        {i}
+                      </button>
+                    );
+                  }
+                  
+                  // Last page
+                  if (endPage < totalPages) {
+                    if (endPage < totalPages - 1) {
+                      pages.push(
+                        <span key="ellipsis2" className="pagination-ellipsis">...</span>
+                      );
+                    }
+                    pages.push(
+                      <button
+                        key={totalPages}
+                        className="pagination-btn pagination-btn-number"
+                        onClick={() => handlePageChange(totalPages)}
+                      >
+                        {totalPages}
+                      </button>
+                    );
+                  }
+                  
+                  return pages;
+                })()}
+              </div>
+              
+              {/* Next Button */}
+              <button
+                className="pagination-btn pagination-btn-nav"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                title="Trang sau"
+              >
+                →
+              </button>
+              
+              {/* Last Page Button */}
+              <button
+                className="pagination-btn pagination-btn-nav"
+                onClick={() => handlePageChange(totalPages)}
+                disabled={currentPage === totalPages}
+                title="Trang cuối"
+              >
+                ⏭
+              </button>
+              
+              {/* Info */}
+              <div className="pagination-info">
+                <span className="pagination-info-text">
+                  {((currentPage - 1) * itemsPerPage + 1)} - {Math.min(currentPage * itemsPerPage, totalItems)} / {totalItems}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

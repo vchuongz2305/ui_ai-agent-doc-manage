@@ -45,13 +45,13 @@ function HomePage() {
         completed: completed,
         processing: processing,
         failed: failed,
-        pending: allDocs.filter(doc => doc.status === 'pending').length
+        pending: allDocs.filter(doc => doc.status === 'pending' || !doc.status).length
       };
       
       // Documents by department
       const deptCounts = {};
       allDocs.forEach(doc => {
-        const dept = doc.department || 'Unknown';
+        const dept = doc.department || 'Chưa phân loại';
         deptCounts[dept] = (deptCounts[dept] || 0) + 1;
       });
       
@@ -60,28 +60,36 @@ function HomePage() {
       for (let i = 6; i >= 0; i--) {
         const date = new Date();
         date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0); // Reset time to start of day
         const dateStr = date.toISOString().split('T')[0];
         const count = allDocs.filter(doc => {
-          const docDate = doc.created_at ? new Date(doc.created_at).toISOString().split('T')[0] : null;
-          return docDate === dateStr;
+          if (!doc.created_at) return false;
+          const docDate = new Date(doc.created_at);
+          docDate.setHours(0, 0, 0, 0);
+          return docDate.toISOString().split('T')[0] === dateStr;
         }).length;
         last7Days.push({
           date: date.toLocaleDateString('vi-VN', { day: 'numeric', month: 'short' }),
-          count: count
+          count: count,
+          fullDate: dateStr
         });
       }
       
       // GDPR decisions from gdpr_result
-      const gdprCounts = { approve: 0, review: 0, reject: 0 };
+      const gdprCounts = { 
+        'Chấp thuận': 0, 
+        'Cần xem xét': 0, 
+        'Từ chối': 0 
+      };
       allDocs.forEach(doc => {
         if (doc.gdpr_result?.gdpr_decision) {
           const decision = doc.gdpr_result.gdpr_decision.toLowerCase();
           if (decision === 'approve' || decision === 'approved' || decision === 'allow') {
-            gdprCounts.approve++;
-          } else if (decision === 'review' || decision === 'anonymize') {
-            gdprCounts.review++;
-          } else if (decision === 'reject' || decision === 'delete') {
-            gdprCounts.reject++;
+            gdprCounts['Chấp thuận']++;
+          } else if (decision === 'review' || decision === 'anonymize' || decision === 'cần xem xét') {
+            gdprCounts['Cần xem xét']++;
+          } else if (decision === 'reject' || decision === 'delete' || decision === 'từ chối') {
+            gdprCounts['Từ chối']++;
           }
         }
       });
@@ -91,20 +99,55 @@ function HomePage() {
         .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
         .slice(0, 10);
 
+      // Format status labels in Vietnamese
+      const statusLabels = {
+        completed: 'Hoàn thành',
+        processing: 'Đang xử lý',
+        failed: 'Thất bại',
+        pending: 'Chờ xử lý'
+      };
+
+      const formattedStatus = Object.entries(statusCounts)
+        .filter(([_, value]) => value > 0) // Only show statuses with data
+        .map(([name, value]) => ({ 
+          name: statusLabels[name] || name, 
+          value,
+          originalName: name // Keep original for color mapping
+        }));
+
+      const formattedDept = Object.entries(deptCounts)
+        .sort((a, b) => b[1] - a[1]) // Sort by count descending
+        .map(([name, value]) => ({ name, value }));
+
+      const formattedGDPR = Object.entries(gdprCounts)
+        .filter(([_, value]) => value > 0) // Only show decisions with data
+        .map(([name, value]) => ({ name, value }));
+
+      console.log('📊 Dashboard Statistics:', {
+        total,
+        completed,
+        processing,
+        failed,
+        statusData: formattedStatus,
+        deptData: formattedDept,
+        dayData: last7Days,
+        gdprData: formattedGDPR
+      });
+
       setStats({
         totalDocuments: total,
         completedDocuments: completed,
         processingDocuments: processing,
         failedDocuments: failed,
         totalSize: 0, // Size not available from /gdpr endpoint
-        documentsByStatus: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
-        documentsByDepartment: Object.entries(deptCounts).map(([name, value]) => ({ name, value })),
+        documentsByStatus: formattedStatus,
+        documentsByDepartment: formattedDept,
         documentsByDay: last7Days,
-        gdprDecisions: Object.entries(gdprCounts).map(([name, value]) => ({ name, value })),
+        gdprDecisions: formattedGDPR,
         recentDocuments: recentDocs
       });
     } catch (error) {
-      console.error('Error fetching statistics:', error);
+      console.error('❌ Error fetching statistics:', error);
     } finally {
       setLoading(false);
     }
@@ -211,7 +254,7 @@ function HomePage() {
             <div className="loading-modern">
               <div className="spinner-modern"></div>
             </div>
-          ) : (
+          ) : stats.documentsByStatus.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
@@ -225,12 +268,19 @@ function HomePage() {
                   dataKey="value"
                 >
                   {stats.documentsByStatus.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={STATUS_COLORS[entry.name] || COLORS[index % COLORS.length]} />
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={STATUS_COLORS[entry.originalName] || COLORS[index % COLORS.length]} 
+                    />
                   ))}
                 </Pie>
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--gray-500)' }}>
+              Chưa có dữ liệu
+            </div>
           )}
         </div>
 
@@ -278,17 +328,37 @@ function HomePage() {
             <div className="loading-modern">
               <div className="spinner-modern"></div>
             </div>
-          ) : (
+          ) : stats.documentsByDay.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={stats.documentsByDay}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
+                <XAxis 
+                  dataKey="date" 
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis 
+                  domain={[0, 'dataMax + 1']}
+                  allowDecimals={false}
+                />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="count" stroke="#8B5CF6" strokeWidth={2} name="Số lượng" />
+                <Line 
+                  type="monotone" 
+                  dataKey="count" 
+                  stroke="#8B5CF6" 
+                  strokeWidth={2} 
+                  name="Số lượng"
+                  dot={{ fill: '#8B5CF6', r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
               </LineChart>
             </ResponsiveContainer>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--gray-500)' }}>
+              Chưa có dữ liệu
+            </div>
           )}
         </div>
 
@@ -304,14 +374,26 @@ function HomePage() {
             <div className="loading-modern">
               <div className="spinner-modern"></div>
             </div>
-          ) : stats.gdprDecisions.some(d => d.value > 0) ? (
+          ) : stats.gdprDecisions.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={stats.gdprDecisions}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis 
+                  dataKey="name" 
+                  angle={-45}
+                  textAnchor="end"
+                  height={80}
+                />
+                <YAxis 
+                  domain={[0, 'dataMax + 1']}
+                  allowDecimals={false}
+                />
                 <Tooltip />
-                <Bar dataKey="value" fill="#8B5CF6" />
+                <Bar 
+                  dataKey="value" 
+                  fill="#8B5CF6"
+                  radius={[8, 8, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -344,7 +426,6 @@ function HomePage() {
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--gray-200)' }}>
                   <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--gray-700)' }}>Tên File</th>
-                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--gray-700)' }}>Bộ Phận</th>
                   <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--gray-700)' }}>Trạng Thái</th>
                   <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600, color: 'var(--gray-700)' }}>Ngày Tạo</th>
                 </tr>
@@ -354,9 +435,6 @@ function HomePage() {
                   stats.recentDocuments.slice(0, 10).map((doc, index) => (
                     <tr key={index} style={{ borderBottom: '1px solid var(--gray-200)' }}>
                       <td style={{ padding: '12px', color: 'var(--gray-900)' }}>{doc.file_name || 'N/A'}</td>
-                      <td style={{ padding: '12px', color: 'var(--gray-600)' }}>
-                        <span className="filter-tag">{doc.department || 'N/A'}</span>
-                      </td>
                       <td style={{ padding: '12px' }}>
                         <span style={{
                           padding: '4px 12px',
@@ -380,7 +458,7 @@ function HomePage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="4" style={{ padding: '40px', textAlign: 'center', color: 'var(--gray-500)' }}>
+                    <td colSpan="3" style={{ padding: '40px', textAlign: 'center', color: 'var(--gray-500)' }}>
                       Chưa có tài liệu nào
                     </td>
                   </tr>
