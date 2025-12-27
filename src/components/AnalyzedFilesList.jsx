@@ -14,13 +14,9 @@ const AnalyzedFilesList = forwardRef(({ onFileSelect }, ref) => {
   const loadAnalyzedFiles = async (page = 1) => {
     try {
       setLoading(true);
-<<<<<<< HEAD
-      const response = await fetch(getApiUrl('/api/document/status'));
-=======
       const offset = (page - 1) * itemsPerPage;
       // Fetch từ PostgreSQL endpoint với pagination
-      const response = await fetch(`/gdpr?has_analysis=true&limit=${itemsPerPage}&offset=${offset}`);
->>>>>>> origin/temp
+      const response = await fetch(getApiUrl(`/gdpr?has_analysis=true&limit=${itemsPerPage}&offset=${offset}`));
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
